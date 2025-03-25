@@ -1,0 +1,55 @@
+image: amazon/aws-cli:latest
+
+pipelines:
+  default:
+    - step:
+        name: Setup and Unit Tests
+        image: python:3.8
+        caches:
+          - pip
+        script:
+          # Install Java (updated for Debian Bookworm)
+          - apt-get update && apt-get install -y openjdk-17-jre-headless  # Updated Java version
+          
+          # Verify Java installation
+          - java -version
+          
+          # Install test dependencies
+          - pip install pyspark==3.4.0 pytest boto3 pytest-mock chispa
+          
+          # Run unit tests
+          - python -m pytest tests/unit/ -v -s
+
+        artifacts:
+          - glue-scripts/**
+
+    - step:
+        name: Deploy AWS Glue Script
+        script:
+          # Configure AWS credentials
+          - export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+          - export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+          - export AWS_REGION=us-east-1
+
+          # Upload script to S3
+          - echo "Uploading Glue script to S3..."
+          - aws s3 cp glue_scripts/transform.py s3://$GLUE_ASSETS_BUCKET/scripts/ || exit 1
+
+          # Update Glue job with full configuration
+          - echo "Updating AWS Glue job..."
+          - |
+            JOB_UPDATE=$(cat <<EOF
+            {
+              "Command": {
+                "Name": "glueetl",
+                "ScriptLocation": "s3://$GLUE_ASSETS_BUCKET/scripts/transform.py",
+                "PythonVersion": "3"
+              },
+              "Role": "$GLUE_JOB_ROLE_ARN",
+              "GlueVersion": "5.0",
+              "WorkerType": "G.1X",
+              "NumberOfWorkers": 2
+            }
+            EOF
+            )
+            aws glue update-job --job-name transform --job-update "$JOB_UPDATE" || exit 1
