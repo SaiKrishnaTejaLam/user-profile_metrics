@@ -1,0 +1,15 @@
+{
+  "Comment": "Used TO RUN Glue Job",
+  "StartAt": "Glue StartJobRun",
+  "States": {
+    "Glue StartJobRun": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun",
+      "Arguments": {
+        "JobName": "transform"
+      },
+      "End": true
+    }
+  },
+  "QueryLanguage": "JSONata"
+}
